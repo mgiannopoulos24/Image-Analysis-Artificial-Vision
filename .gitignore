@@ -2,4 +2,6 @@ env/
 *.log
 *.aux
 *.toc
+*.out
 *.zip
+oxford-iiit-pet/

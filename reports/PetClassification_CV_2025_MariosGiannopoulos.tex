@@ -10,149 +10,145 @@
 \usepackage{float}
 \usepackage{subcaption}
 \usepackage{booktabs}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black]{hyperref}
 
 \linespread{1.15}
-\title{Ταξινόμηση εικόνων κατοικίδιων (Pet Classification) - CV 2025}
+\title{Pet Image Classification - CV 2025}
 \author{Marios Giannopoulos\\Student ID: 1115202000032}
 \date{2026-02-02}
-
-% =============================================================================
-% ΟΔΗΓΙΕΣ ΓΙΑ ΕΙΚΟΝΕΣ (αποσχολίασε το \includegraphics και βάλε το σωστό path)
-% Βάλε τις εικόνες στο ίδιο φάκελο με το .tex ή σε υποφάκελο π.χ. figures/
-% -----------------------------------------------------------------------------
-% 1. fig:neural_results    -> Αποτελέσματα (α): mIoU, CCR, πίνακας σύγχυσης CNN
-% 2. fig:segmentation_qualitative -> 2-3 ποιοτικές κατάτμησεις (εικόνα|GT μάσκα|πρόβλεψη)
-% 3. fig:traditional_results -> Αποτελέσματα (β): CCR, πίνακας σύγχυσης BoF+MLP
-% 4. fig:background_replaced (προαιρ.) -> Παράδειγμα εικόνας με αλλαγμένο φόντο
-% 5. (προαιρ.) Γράφημα training curves (loss/accuracy vs epoch)
-% =============================================================================
 
 \begin{document}
 \maketitle
 \tableofcontents
 
-\section{Εισαγωγή}
+\section{Introduction}
 \label{sec:introduction}
+\phantomsection
 
-Η εργασία υλοποιεί δύο εναλλακτικές σωληνώσεις μηχανικής όρασης για την ταξινόμηση εικόνων σε φυλή κατοικίδιων (6 κλάσεις: Abyssinian, Bengal, Birman, Boxer, English Cocker Spaniel, German Shorthaired) με χρήση του συνόλου δεδομένων Oxford-IIIT Pet. Οι δύο προσεγγίσεις είναι η \textbf{νευρωνική σωλήνωση} (U-Net CNN με διπλή κεφαλή: κατάτμηση + ταξινόμηση) και η \textbf{παραδοσιακή σωλήνωση} (Σάκος Χαρακτηριστικών με SIFT και MLP ταξινομητή).
+This assignment implements two alternative computer vision pipelines for classifying pet breed images (6 classes: Abyssinian, Bengal, Birman, Boxer, English Cocker Spaniel, German Shorthaired) using the Oxford-IIIT Pet dataset. The two approaches are the \textbf{neural pipeline} (U-Net CNN with dual heads: segmentation + classification) and the \textbf{traditional pipeline} (Bag-of-Features with SIFT and MLP classifier).
 
-\textbf{Σχεδιαστικές επιλογές:}
+\textbf{Design choices:}
 \begin{itemize}
-    \item Για τον περιορισμό του υπολογιστικού κόστους χρησιμοποιήθηκε ανάλυση εικόνας 128$\times$128 και ελαφρύ U-Net (base\_channels=32). Η κεφαλή κατάτμησης ωθεί τον κωδικοποιητή να μαθαίνει χαρακτηριστικά που εστιάζουν στο ζώο και όχι στο φόντο.
-    \item Για την παραδοσιακή σωλήνωση επιλέχτηκαν τρία διαφορετικά μεγέθη λεξιλογίου (K=300, 400, 500) και η βέλτιστη τιμή K επιλέχθηκε με βάση την απόδοση στο σύνολο επικύρωσης.
-    \item Όλες οι μετρικές (mIoU, ακρίβεια ταξινόμησης CCR, πίνακας σύγχυσης) υλοποιήθηκαν χειροκίνητα, χωρίς έτοιμες βιβλιοθήκες (scikit-learn, torchmetrics), σύμφωνα με τους κανόνες της εργασίας.
+    \item To limit computational cost, 128$\times$128 image resolution and lightweight U-Net (base\_channels=32) were used. The segmentation head pushes the encoder to learn features focusing on the animal rather than the background.
+    \item For the traditional pipeline, three different vocabulary sizes (K=300, 400, 500) were tested, and the optimal K was selected based on validation set performance.
+    \item All metrics (mIoU, classification accuracy CCR, confusion matrix) were implemented manually, without ready-made libraries (scikit-learn, torchmetrics), according to the assignment rules.
 \end{itemize}
 
-\section{Περιγραφή υλοποίησης}
+\section{Implementation Description}
 \label{sec:implementation}
+\phantomsection
 
-\subsection{Δεδομένα και διάσπαση}
+\subsection{Data and Split}
+\phantomsection
 
-Χρησιμοποιήθηκε το Oxford-IIIT Pet με \texttt{target\_types=("category", "segmentation")}. Το dataset φιλτραρίστηκε στις 6 ζητούμενες φυλές. Το επίσημο ``trainval'' διασπάστηκε σε train (80\%) και val (20\%) με σταθερό seed (NumPy, χωρίς scikit-learn). Το σύνολο ελέγχου προέρχεται από το επίσημο test split όταν διαθέσιμο. Όλες οι εικόνες και οι μάσκες μετασχηματίστηκαν σε κοινό μέγεθος (128$\times$128). Η τριμερής μάσκα μετατράπηκε σε στόχο 2 κλάσεων με \texttt{ignore\_index=255} για τα pixel περιγράμματος.
+The Oxford-IIIT Pet dataset was used with \texttt{target\_types=("category", "segmentation")}. The dataset was filtered to the 6 target breeds. The official ``trainval'' was split into train (80\%) and val (20\%) with a fixed seed (NumPy, no scikit-learn). The test set comes from the official test split when available. All images and masks were transformed to a common size (128$\times$128). The ternary mask was converted to a 2-class target with \texttt{ignore\_index=255} for boundary pixels.
 
-\subsection{Νευρωνική σωλήνωση (α)}
+\subsection{Neural Pipeline (a)}
+\phantomsection
 
-Υλοποιήθηκε U-Net με αρχιτεκτονική κωδικοποιητή-αποκωδικοποιητή και συνάψεις συντόμευσης. Ο κωδικοποιητής παράγει χαρακτηριστικά σε 4 επίπεδα (32, 64, 128, 256 κανάλια) και bottleneck 512 καναλιών. Ο αποκωδικοποιητής οδηγεί σε κεφαλή σημασιολογικής κατάτμησης δύο κλάσεων (φόντο / προσκήνιο). Παράλληλα, στο βαθύτερο τανυστή εφαρμόζεται \texttt{AdaptiveAvgPool2d(1)} και ένα πλήρως συνδεδεμένο επίπεδο για ταξινόμηση σε 6 κλάσεις.
+A U-Net with encoder-decoder architecture and skip connections was implemented. The encoder produces features at 4 levels (32, 64, 128, 256 channels) and a bottleneck of 512 channels. The decoder leads to a 2-class semantic segmentation head (background / foreground). Additionally, \texttt{AdaptiveAvgPool2d(1)} and a fully connected layer are applied to the deepest tensor for classification into 6 classes.
 
-Το δίκτυο εκπαιδεύεται μία φορά από κοινού με αθροιστική συνάρτηση κόστους: $\lambda \cdot \text{CE}_{\text{seg}} + \text{CE}_{\text{cls}}$, με \texttt{CrossEntropyLoss(ignore\_index=255)} για την κατάτμηση. Χρησιμοποιήθηκαν regularization (weight decay), scheduler (ReduceLROnPlateau) και mixed precision (AMP) στο GPU για ταχύτερη εκπαίδευση. Εκπαίδευση για το πολύ 30 εποχές, σύμφωνα με την εκφώνηση.
+The network is trained jointly with a combined loss function: $\lambda \cdot \text{CE}_{\text{seg}} + \text{CE}_{\text{cls}}$, with \texttt{CrossEntropyLoss(ignore\_index=255)} for segmentation. Regularization (weight decay), scheduler (ReduceLROnPlateau), and mixed precision (AMP) on GPU were used for faster training. Training for up to 30 epochs, according to the assignment.
 
-\textbf{Πρωτόκολλο:} Εκπαίδευση στο train, επιλογή υπερπαραμέτρων (λ, batch size, κ.λπ.) με βάση το validation mIoU και την ακρίβεια ταξινόμησης. Τελική αξιολόγηση μόνο στο test set (mIoU, CCR, πίνακας σύγχυσης).
+\textbf{Protocol:} Train on train, hyperparameter selection ($\lambda$, batch size, etc.) based on validation mIoU and classification accuracy. Final evaluation only on test set (mIoU, CCR, confusion matrix).
 
-\subsection{Παραδοσιακή σωλήνωση (β)}
+\subsection{Traditional Pipeline (b)}
+\phantomsection
 
-Εξαγωγή SIFT με \texttt{cv2.SIFT\_create()} από όλες τις εικόνες εκπαίδευσης. Τυχαία δειγματοληψία M περιγραφέων (M $<$ 50000) για την κατασκευή οπτικού λεξιλογίου με K-means (\texttt{cv2.kmeans}). Κάθε εικόνα αναπαρίσταται ως ιστόγραμμα BoF (L1 κανονικοποίηση). Η περίπτωση εικόνων χωρίς SIFT περιγραφείς αντιμετωπίζεται με μηδενικό ιστόγραμμα.
+SIFT extraction with \texttt{cv2.SIFT\_create()} from all training images. Random sampling of M descriptors (M $<$ 50000) for building the visual vocabulary with K-means (\texttt{cv2.kmeans}). Each image is represented as a BoF histogram (L1 normalization). The case of images without SIFT descriptors is handled with a zero histogram.
 
-Για τρία διαφορετικά K (300, 400, 500) εκπαιδεύτηκε MLP με 1--2 κρυφά επίπεδα (256, 128 νευρώνες), dropout και weight decay. Επιλέχτηκε το K με την καλύτερη ακρίβεια στο validation. Τελική αξιολόγηση στο test set μόνο για το βέλτιστο K (CCR, πίνακας σύγχυσης). Εκπαίδευση MLP για το πολύ 30 εποχές.
+For three different K (300, 400, 500), an MLP with 1--2 hidden layers (256, 128 neurons), dropout, and weight decay was trained. The K with the best validation accuracy was selected. Final evaluation on test set only for the optimal K (CCR, confusion matrix). MLP training for up to 30 epochs.
 
-\subsection{Επαλήθευση ιδιοτήτων μάθησης (γ)}
+\subsection{Learning Verification (c)}
+\phantomsection
 
-Δημιουργήθηκε παραλλαγή του συνόλου ελέγχου όπου αντικαταστάθηκε μόνο το φόντο: δυαδική μάσκα προσκηνίου (pet + περίγραμμα = 255) με \texttt{cv2.bitwise\_and}, \texttt{cv2.bitwise\_not}, \texttt{cv2.bitwise\_or}, και νέο φόντο χαμηλοσυχνοτικό θόρυβο (τυχαίος θόρυβος με \texttt{cv2.GaussianBlur}). Τα ήδη εκπαιδευμένα μοντέλα (CNN και MLP) αξιολογήθηκαν ξανά σε αυτό το σύνολο· συγκρίθηκαν CCR και πίνακας σύγχυσης με τα αρχικά αποτελέσματα test.
+A variant of the test set was created where only the background was replaced: binary foreground mask (pet + boundary = 255) with \texttt{cv2.bitwise\_and}, \texttt{cv2.bitwise\_not}, \texttt{cv2.bitwise\_or}, and new background as low-frequency noise (random noise with \texttt{cv2.GaussianBlur}). The already trained models (CNN and MLP) were re-evaluated on this set; CCR and confusion matrix were compared with the original test results.
 
-\subsection{Οπτικό λεξιλόγιο καθοδηγούμενο από μάσκα (δ, προαιρετικό)}
+\subsection{Mask-guided Visual Vocabulary (d, optional)}
+\phantomsection
 
-Επαναλήφθηκε η σωλήνωση (β) κατασκευάζοντας το λεξιλόγιο μόνο από SIFT που εμπίπτουν χωρικά στις μάσκες προσκηνίου των εικόνων εκπαίδευσης. Δοκιμάστηκαν δύο επιλογές για τα ιστογράμματα: (Α) όλα τα SIFT για όλες τις εικόνες· (Β) για train μόνο SIFT εντός μάσκας, για val/test όλα τα SIFT. Συγκρίθηκαν τα αποτελέσματα μεταξύ τους και με το (β).
+Pipeline (b) was repeated by building the vocabulary only from SIFT descriptors that spatially fall within the foreground masks of training images. Two options for histograms were tested: (A) all SIFT for all images; (B) for train only SIFT inside mask, for val/test all SIFT. Results were compared with each other and with (b).
 
-\section{Αποτελέσματα}
+\section{Results}
 \label{sec:results}
+\phantomsection
 
-\subsection{Νευρωνική σωλήνωση (α)}
+\subsection{Neural Pipeline (a)}
+\phantomsection
 
-Βέλτιστες υπερπαράμετροι (παράδειγμα): λ=1.0, batch size=32, IMAGE\_SIZE=128, base\_channels=32, weight decay=1e-4, epochs=30.
+Optimal hyperparameters (example): $\lambda$=1.0, batch size=32, IMAGE\_SIZE=128, base\_channels=32, weight decay=1e-4, epochs=30.
 
-% ========== ΣΧΟΛΙΟ ΕΙΚΟΝΑΣ ==========
-% [ΕΙΚΟΝΑ 1] Βάλε εδώ: Πίνακας ή figure με τελικές μετρικές test για το CNN: mIoU, CCR, και (αν θέλεις) πίνακα σύγχυσης σε μορφή εικόνας.
-% Π.χ. export από το notebook: confusion matrix ως heatmap (matplotlib), ή screenshot του RESULTS SUMMARY για (α).
-% Αρχείο προτεινόμενο: results_neural_test.png ή confusion_cnn.png
-% =====================================
+Final metrics on test set: \textbf{mIoU} (2-class segmentation) and \textbf{CCR} (6-class classification accuracy). The confusion matrix (6$\times$6) is reported in the ``RESULTS SUMMARY'' cell of the notebook.
+
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.75\textwidth]{results_neural_test.png}
-    \caption{Τελικές μετρικές νευρωνικής σωλήνωσης στο test set: mIoU, ακρίβεια ταξινόμησης (CCR) και πίνακας σύγχυσης. \textbf{Βάλε εδώ εικόνα:} πίνακα σύγχυσης ή screenshot αποτελεσμάτων (α) από το notebook.}
+    \includegraphics[width=0.75\textwidth]{assets/results_neural_test.png}
+    \caption{Final neural pipeline metrics on test set: mIoU, CCR, and confusion matrix.}
     \label{fig:neural_results}
 \end{figure}
 
-Η κοινή εκπαίδευση κατάτμησης και ταξινόμησης οδήγησε σε ικανοποιητικό mIoU και ακρίβεια ταξινόμησης. Η κεφαλή κατάτμησης βοηθά τον κωδικοποιητή να εστιάζει στο ζώο.
+The joint segmentation and classification training led to satisfactory mIoU and classification accuracy. The segmentation head helps the encoder focus on the animal.
 
-% ========== ΣΧΟΛΙΟ ΕΙΚΟΝΑΣ ==========
-% [ΕΙΚΟΝΑ 2] Βάλε εδώ: 2--3 ποιοτικές απεικονίσεις κατάτμησης σε εικόνες test από το CNN (απαιτούμενο από την εκφώνηση).
-% Π.χ. εικόνα test | ground-truth μάσκα | predicted μάσκα από το U-Net (όπως στο κελί RESULTS SUMMARY / segmentation visualizations του notebook).
-% Εκτύπωσε από το notebook το figure με τις 3 σειρές (image, ground-truth mask, CNN segmentation prediction) και σώσε ως segmentation_qualitative.png
-% =====================================
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.9\textwidth]{segmentation_qualitative.png}
-    \caption{Ποιοτικές απεικονίσεις κατάτμησης σε εικόνες test: αρχική εικόνα, ground-truth μάσκα, πρόβλεψη κατάτμησης από το CNN. \textbf{Βάλε εδώ εικόνα:} το figure με τις 2--3 ενδεικτικές ποιοτικές απεικονίσεις κατάτμησης από το κελί ``RESULTS SUMMARY'' / οπτικοποίηση κατάτμησης του notebook.}
+    \includegraphics[width=0.9\textwidth]{assets/segmentation_qualitative.png}
+    \caption{Qualitative segmentation visualizations on test images: original image, ground-truth mask, CNN segmentation prediction.}
     \label{fig:segmentation_qualitative}
 \end{figure}
 
-\subsection{Παραδοσιακή σωλήνωση (β)}
+\subsection{Traditional Pipeline (b)}
+\phantomsection
 
-Βέλτιστο K επιλέχθηκε με βάση το validation (π.χ. K=300, 400 ή 500). Υπερπαράμετροι: M (π.χ. 30000), epochs MLP=30, weight decay=1e-4, dropout=0.3.
+Optimal K was selected based on validation (e.g., K=300, 400 or 500). Hyperparameters: M (e.g., 30000), MLP epochs=30, weight decay=1e-4, dropout=0.3.
 
-% ========== ΣΧΟΛΙΟ ΕΙΚΟΝΑΣ ==========
-% [ΕΙΚΟΝΑ 3] Βάλε εδώ: Αποτελέσματα traditional pipeline στο test set για το βέλτιστο K: CCR και πίνακα σύγχυσης.
-% Π.χ. confusion matrix BoF+MLP ως εικόνα (heatmap) ή screenshot του RESULTS SUMMARY για (β).
-% Αρχείο προτεινόμενο: results_traditional_test.png ή confusion_mlp.png
-% =====================================
+Final metrics on test set for optimal K: \textbf{CCR} and \textbf{confusion matrix} (6$\times$6). Values are printed in the ``Traditional Pipeline Test Results'' and ``RESULTS SUMMARY'' cells of the notebook.
+
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.75\textwidth]{results_traditional_test.png}
-    \caption{Τελικές μετρικές παραδοσιακής σωλήνωσης (βέλτιστο K) στο test set: ακρίβεια (CCR) και πίνακας σύγχυσης. \textbf{Βάλε εδώ εικόνα:} πίνακα σύγχυσης ή screenshot αποτελεσμάτων (β) από το notebook.}
+    \includegraphics[width=0.75\textwidth]{assets/results_traditional_test.png}
+    \caption{Final traditional pipeline metrics (optimal K) on test set: CCR and confusion matrix.}
     \label{fig:traditional_results}
 \end{figure}
 
-Συγκριτικά, το νευρωνικό μοντέλο τείνει να πετυχαίνει καλύτερη ακρίβεια ταξινόμησης thanks to τα learned χαρακτηριστικά· το BoF+MLP βασίζεται σε SIFT και στο σταθερό λεξιλόγιο.
+Comparatively, the neural model tends to achieve better classification accuracy thanks to learned features; BoF+MLP relies on SIFT and the fixed vocabulary.
 
-\subsection{Επαλήθευση με αλλαγή φόντου (γ)}
+\subsection{Background Replacement Verification (c)}
+\phantomsection
 
-% ========== ΣΧΟΛΙΟ ΕΙΚΟΝΑΣ ==========
-% [ΕΙΚΟΝΑ 4] (Προαιρετικό) Βάλε εδώ: Παράδειγμα εικόνας test με αντικατασταμένο φόντο (blurred noise) για να δείξεις το variant dataset.
-% Π.χ. 1--2 εικόνες: original test image | same image με replaced background. Από το notebook μπορείς να σώσεις ένα sample από το ReplacedBackgroundTestDataset.
-% Αρχείο προτεινόμενο: background_replaced_example.png
-% =====================================
+On the test set with replaced background (low-frequency noise instead of original background), the CNN and MLP models were re-evaluated. The new \textbf{CCR} values are printed in the notebook (``Comparison: original test vs background-replaced test''). If models focus on the animal, CCR should remain close to original; a small drop indicates they also use information from the background.
+
 \begin{figure}[H]
     \centering
-    % \includegraphics[width=0.7\textwidth]{background_replaced_example.png}
-    \caption{Παράδειγμα εικόνας ελέγχου με αντικατασταμένο φόντο (χαμηλοσυχνοτικός θόρυβος). \textbf{Βάλε εδώ (προαιρετικά):} εικόνα original vs. replaced background για 1--2 δείγματα.}
+    \includegraphics[width=0.7\textwidth]{assets/background_replaced_example.png}
+    \caption{Example test image with replaced background (original vs.\ replaced background).}
     \label{fig:background_replaced}
 \end{figure}
 
-Στο σύνολο ελέγχου με αλλαγμένο φόντο, αν τα μοντέλα εστιάζουν στο ζώο, η CCR θα παραμείνει σχετικά κοντά στην αρχική. Μικρή πτώση υποδηλώνει ότι τα μοντέλα χρησιμοποιούν και πληροφορίες από το φόντο.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/background_replaced_comparison.png}
+    \caption{Comparison of classification accuracy (CCR) on original vs.\ background-replaced test sets for both CNN and MLP models.}
+    \label{fig:background_replaced_comparison}
+\end{figure}
 
-\subsection{Σύνοψη και συζήτηση}
+\subsection{Summary and Discussion}
+\phantomsection
 
-Τι λειτούργησε καλά: κοινή εκπαίδευση U-Net με δύο κεφαλές· L1 κανονικοποίηση ιστογραμμάτων BoF· επιλογή K με validation· χειροκίνητες μετρικές χωρίς εξωτερικές βιβλιοθήκες. Προκλήσεις: ο χρόνος εκπαίδευσης του CNN (μείωση με 128$\times$128 και ελαφρύ μοντέλο)· η ευαισθησία του BoF στο μέγεθος λεξιλογίου και στη ποιότητα SIFT.
+What worked well: joint U-Net training with two heads; L1 normalization of BoF histograms; K selection with validation; manual metrics without external libraries. Challenges: CNN training time (reduced with 128$\times$128 and lightweight model); BoF sensitivity to vocabulary size and SIFT quality. Training was performed for 30 epochs for both models (CNN and MLP), according to the assignment.
 
-% ========== ΣΧΟΛΙΟ ΕΙΚΟΝΑΣ ==========
-% [ΕΙΚΟΝΑ 5] (Προαιρετικό) Βάλε εδώ: Γράφημα loss/accuracy κατά τις εποχές για το CNN ή το MLP (αν το έχεις σώσει από το notebook).
-% Π.χ. train/val loss και val mIoU ή val accuracy vs. epoch. Αρχείο: training_curves.png
-% =====================================
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{assets/training_curves.png}
+    \caption{Loss / accuracy plot over epochs for CNN or MLP.}
+    \label{fig:training_curves}
+\end{figure}
 
-\section{Συμπέρασμα}
+\section{Conclusion}
 \label{sec:conclusion}
+\phantomsection
 
-Η εργασία κάλυψε δύο εναλλακτικές προσεγγίσεις ταξινόμησης: νευρωνική (U-Net με διπλή κεφαλή) και παραδοσιακή (BoF + MLP). Οι κύριες μαθήσεις ήταν η σημασία της κοινού εκπαίδευσης κατάτμησης-ταξινόμησης για καλύτερα χαρακτηριστικά, η επιλογή υπερπαραμέτρων (λ, K) με validation και η επαλήθευση ότι τα μοντέλα εστιάζουν στο ζώο μέσω του ελέγχου με αλλαγμένο φόντο.
+The assignment covered two alternative classification approaches: neural (U-Net with dual head) and traditional (BoF + MLP). The main learnings were the importance of joint segmentation-classification training for better features, hyperparameter selection ($\lambda$, K) with validation, and verification that models focus on the animal through the background-replaced test.
 
-\textbf{Περιορισμοί:} Μικρό μέγεθος dataset και μόνο 6 κλάσεις· ελαφρύ U-Net και μικρή ανάλυση (128) για ταχύτητα· BoF εξαρτάται από την ποιότητα SIFT και το μέγεθος λεξιλογίου.
+\textbf{Limitations:} Small dataset size and only 6 classes; lightweight U-Net and low resolution (128) for speed; BoF depends on SIFT quality and vocabulary size.
 
 \end{document}
